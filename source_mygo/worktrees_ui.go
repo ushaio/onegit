@@ -37,7 +37,7 @@ func (s *settings) selectProject(node *projectNode, onMain func(func())) {
 	if s.state.SelectedProjects == nil {
 		s.state.SelectedProjects = make(map[string]string)
 	}
-	s.state.SelectedProjects[s.projectRoot] = node.Path
+	s.state.SelectedProjects[globalRoot] = node.Path
 	s.saveSidebarState()
 	s.overview.Loading = true
 	s.readWorktrees(node, onMain)
@@ -146,10 +146,15 @@ func (s *settings) rememberWorktreeSelection() {
 	s.saveSidebarState()
 }
 
+// projectName labels a path by its last element. A volume root such as D:\
+// has no last element, so its volume names it.
 func projectName(path string) string {
 	label := filepath.Base(path)
 	if label == "" || label == "." || label == string(filepath.Separator) {
-		label = path
+		if volume := filepath.VolumeName(path); volume != "" {
+			return volume + string(filepath.Separator)
+		}
+		return path
 	}
 	return label
 }

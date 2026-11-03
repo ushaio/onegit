@@ -32,22 +32,20 @@ type groupDialog struct {
 	name    string
 }
 
-// projectGroups returns the current parent directory's groups in sidebar
-// order, always including Ungrouped Projects.
+// projectGroups returns the sidebar's groups in order, always including
+// Ungrouped Projects. Every added folder shares them.
 func (s *settings) projectGroups() []*projectGroup {
-	groups := s.state.Groups[s.projectRoot]
+	groups := s.state.Groups[globalRoot]
 	for _, group := range groups {
 		if group.ID == ungroupedID {
 			return groups
 		}
 	}
 	groups = append(groups, &projectGroup{ID: ungroupedID})
-	if s.projectRoot != "" {
-		if s.state.Groups == nil {
-			s.state.Groups = make(map[string][]*projectGroup)
-		}
-		s.state.Groups[s.projectRoot] = groups
+	if s.state.Groups == nil {
+		s.state.Groups = make(map[string][]*projectGroup)
 	}
+	s.state.Groups[globalRoot] = groups
 	return groups
 }
 
@@ -89,7 +87,7 @@ func (s *settings) createGroup(name string) *projectGroup {
 		}
 	}
 	groups = append(groups[:at], append([]*projectGroup{group}, groups[at:]...)...)
-	s.state.Groups[s.projectRoot] = groups
+	s.state.Groups[globalRoot] = groups
 	return group
 }
 
@@ -106,7 +104,7 @@ func (s *settings) deleteGroup(id string) {
 			kept = append(kept, group)
 		}
 	}
-	s.state.Groups[s.projectRoot] = kept
+	s.state.Groups[globalRoot] = kept
 	walkProjects(s.projectTree, func(node *projectNode) {
 		if node.Group == id {
 			node.Group = ""
@@ -151,7 +149,7 @@ func (s *settings) moveGroup(from, to string) {
 		}
 	}
 	at = min(at, len(kept))
-	s.state.Groups[s.projectRoot] = append(kept[:at], append([]*projectGroup{moved}, kept[at:]...)...)
+	s.state.Groups[globalRoot] = append(kept[:at], append([]*projectGroup{moved}, kept[at:]...)...)
 	s.saveSidebarState()
 	s.invalidate()
 }

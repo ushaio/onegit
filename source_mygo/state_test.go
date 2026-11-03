@@ -52,7 +52,7 @@ func TestSidebarRestartAndMerge(t *testing.T) {
 	gone := filepath.Join(root, "gone", "repo")
 	testGit(t, "init", gone)
 	path := filepath.Join(t.TempDir(), "state.yaml")
-	s := &settings{statePath: path, values: preferences{ProjectParentDir: root}, systemLanguage: "zh-CN"}
+	s := &settings{statePath: path, values: preferences{Roots: []string{root}}, systemLanguage: "zh-CN"}
 	finishScan(t, s)
 	group := findProject(s.projectTree, filepath.Dir(repo))
 	if group == nil || group.Open {
@@ -76,7 +76,7 @@ func TestSidebarRestartAndMerge(t *testing.T) {
 		t.Fatal("keyboard collapse not persisted", err)
 	}
 	findProject(s.projectTree, repo).Pinned = true
-	s.state.SelectedProjects = map[string]string{root: repo}
+	s.state.SelectedProjects = map[string]string{globalRoot: repo}
 	if err := s.saveSidebarState(); err != nil {
 		t.Fatal(err)
 	}
@@ -135,12 +135,12 @@ func TestSidebarRestartAndMerge(t *testing.T) {
 		t.Fatal("failure lost cached project")
 	}
 	other := t.TempDir()
-	restarted.values.ProjectParentDir = other
+	restarted.values.Roots = []string{other}
 	finishScan(t, restarted)
-	if restarted.projectTree != nil {
+	if findProject(restarted.projectTree, repo) != nil {
 		t.Fatal("cache leaked across roots")
 	}
-	restarted.values.ProjectParentDir = root
+	restarted.values.Roots = []string{root}
 	finishScan(t, restarted)
 	if findProject(restarted.projectTree, repo) == nil {
 		t.Fatal("switching back lost cache")
@@ -164,7 +164,7 @@ func TestStateFilesAndMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	p, err := loadOrMigratePreferences(path, legacy)
-	if err != nil || p.ProjectParentDir != "/projects" || p.Theme != "dark" || p.Language != "en" {
+	if err != nil || len(p.Roots) != 1 || p.Roots[0] != "/projects" || p.Theme != "dark" || p.Language != "en" {
 		t.Fatal("migration failed", p, err)
 	}
 	p.Language = "zh-Hans"
@@ -172,7 +172,7 @@ func TestStateFilesAndMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := loadOrMigratePreferences(path, legacy)
-	if err != nil || got != p {
+	if err != nil || got.Language != "zh-Hans" || len(got.Roots) != 1 || got.Roots[0] != "/projects" {
 		t.Fatal("legacy overwrote new preferences", got, err)
 	}
 	statePath := filepath.Join(dir, "state.yaml")
@@ -204,8 +204,9 @@ func TestPinnedProjectGroupsAndRestore(t *testing.T) {
 	pinned := &projectNode{Path: "/projects/group/repo", Repository: true}
 	other := &projectNode{Path: "/projects/other", Repository: true}
 	group := &projectNode{Path: "/projects/group", Open: true, savedOpen: true, Children: []*projectNode{pinned}}
-	root := &projectNode{Path: "/projects", Children: []*projectNode{group, other}}
-	s := &settings{projectRoot: root.Path, projectTree: root, statePath: filepath.Join(t.TempDir(), "state.yaml"), values: preferences{ProjectParentDir: root.Path}, systemLanguage: "zh-CN"}
+	root := &projectNode{Path: "/projects", Open: true, Children: []*projectNode{group, other}}
+	s := &settings{statePath: filepath.Join(t.TempDir(), "state.yaml"), values: preferences{Roots: []string{root.Path}}, state: sidebarState{Roots: map[string]*projectNode{root.Path: root}}, systemLanguage: "zh-CN"}
+	s.rebuildTree()
 	view := ui.NewTester(s.worktreeSidebar, 300, 720)
 	view.SetPreferences(ui.Preferences{ReduceMotion: true})
 	view.Frame()
@@ -281,8 +282,9 @@ func TestSidebarGroupCollapseAndRestore(t *testing.T) {
 	pin := &projectNode{Path: "/projects/pin", Repository: true, Pinned: true}
 	repo := &projectNode{Path: "/projects/group/repo", Repository: true}
 	group := &projectNode{Path: "/projects/group", Open: true, savedOpen: true, Children: []*projectNode{repo}}
-	root := &projectNode{Path: "/projects", Children: []*projectNode{pin, group}}
-	s := &settings{projectRoot: root.Path, projectTree: root, selectedProject: repo, statePath: filepath.Join(t.TempDir(), "state.yaml"), values: preferences{ProjectParentDir: root.Path}, systemLanguage: "zh-CN"}
+	root := &projectNode{Path: "/projects", Open: true, Children: []*projectNode{pin, group}}
+	s := &settings{statePath: filepath.Join(t.TempDir(), "state.yaml"), selectedProject: repo, values: preferences{Roots: []string{root.Path}}, state: sidebarState{Roots: map[string]*projectNode{root.Path: root}}, systemLanguage: "zh-CN"}
+	s.rebuildTree()
 	view := ui.NewTester(s.worktreeSidebar, 300, 720)
 	view.SetPreferences(ui.Preferences{ReduceMotion: true})
 	view.Frame()
@@ -307,7 +309,8 @@ func TestSidebarGroupCollapseAndRestore(t *testing.T) {
 	if err != nil || state.PinnedOpen == nil || *state.PinnedOpen || state.OtherOpen == nil || *state.OtherOpen {
 		t.Fatal("group collapse was not persisted", err)
 	}
-	restarted := &settings{state: state, projectRoot: root.Path, projectTree: state.Roots[root.Path], statePath: s.statePath, values: s.values, systemLanguage: s.systemLanguage}
+	restarted := &settings{state: state, statePath: s.statePath, values: s.values, systemLanguage: s.systemLanguage}
+	restarted.rebuildTree()
 	view = ui.NewTester(restarted.worktreeSidebar, 300, 720)
 	view.SetPreferences(ui.Preferences{ReduceMotion: true})
 	view.Frame()
@@ -389,8 +392,9 @@ func TestProjectGroupsMoveReorderAndRestore(t *testing.T) {
 	alpha := &projectNode{Path: "/projects/alpha", Repository: true}
 	beta := &projectNode{Path: "/projects/nested/beta", Repository: true}
 	nested := &projectNode{Path: "/projects/nested", Open: true, savedOpen: true, Children: []*projectNode{beta}}
-	root := &projectNode{Path: "/projects", Children: []*projectNode{alpha, nested}}
-	s := &settings{projectRoot: root.Path, projectTree: root, statePath: filepath.Join(t.TempDir(), "state.yaml"), values: preferences{ProjectParentDir: root.Path}, systemLanguage: "en-US"}
+	root := &projectNode{Path: "/projects", Open: true, Children: []*projectNode{alpha, nested}}
+	s := &settings{statePath: filepath.Join(t.TempDir(), "state.yaml"), values: preferences{Roots: []string{root.Path}}, state: sidebarState{Roots: map[string]*projectNode{root.Path: root}}, systemLanguage: "en-US"}
+	s.rebuildTree()
 	view := ui.NewTester(s.worktreeSidebar, 300, 720)
 	view.SetPreferences(ui.Preferences{ReduceMotion: true})
 	view.Frame()
@@ -498,7 +502,8 @@ func TestProjectGroupsMoveReorderAndRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	restarted := &settings{state: state, projectRoot: root.Path, projectTree: state.Roots[root.Path], statePath: s.statePath, values: s.values, systemLanguage: s.systemLanguage}
+	restarted := &settings{state: state, statePath: s.statePath, values: s.values, systemLanguage: s.systemLanguage}
+	restarted.rebuildTree()
 	if got := order(restarted.projectGroups()); got != "ungrouped=,g2=Later,g1=Client" || findProject(restarted.projectTree, beta.Path).Group != "g1" {
 		t.Fatal("groups were not persisted", got)
 	}

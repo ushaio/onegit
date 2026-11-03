@@ -21,21 +21,41 @@ type projectNode struct {
 	Pinned     bool   `yaml:"pinned,omitempty"`
 	Removed    bool   `yaml:"removed,omitempty"`
 	Group      string `yaml:"group,omitempty"`
+	// Root marks a folder the sidebar lists, which stays a folder row even
+	// while its scan has found no project yet.
+	Root bool `yaml:"-"`
 	// Icon is the path of the image the user chose for a repository.
-	Icon      string `yaml:"icon,omitempty"`
+	Icon string `yaml:"icon,omitempty"`
+	// Source names the code host a repository's remote points at, so a
+	// project without a chosen icon leads with that host's mark.
+	Source    string `yaml:"source,omitempty"`
 	savedOpen bool
 	Children  []*projectNode `yaml:"children,omitempty"`
 }
 
+// sameDirectory reports whether two paths name the same directory, even when
+// one is a symlink, a junction or an 8.3 short name of the other.
+func sameDirectory(a, b string) bool {
+	first, err := os.Stat(a)
+	if err != nil {
+		return false
+	}
+	second, err := os.Stat(b)
+	if err != nil {
+		return false
+	}
+	return os.SameFile(first, second)
+}
+
 func scanProjects(ctx context.Context, root string) (*projectNode, error) {
-	root, err := filepath.EvalSymlinks(root)
+	// Keep the spelling the user chose: resolving symlinks here rewrites Windows
+	// paths to 8.3 short names, which no longer match the folder list, the
+	// cached tree or the paths Git reports.
+	root, err := filepath.Abs(root)
 	if err != nil {
 		return nil, err
 	}
-	root, err = filepath.Abs(root)
-	if err != nil {
-		return nil, err
-	}
+	root = filepath.Clean(root)
 	info, err := os.Stat(root)
 	if err != nil {
 		return nil, err
@@ -90,6 +110,7 @@ func scanProjects(ctx context.Context, root string) (*projectNode, error) {
 			// --absolute-git-dir verifies repository metadata, including gitfiles
 			// used by linked worktrees and initialized submodules.
 			cmd := exec.CommandContext(probeCtx, git, "-C", path, "rev-parse", "--absolute-git-dir")
+			hideConsole(cmd)
 			cmd.Env = env
 			_, probeErr := cmd.Output()
 			if probeErr == nil {
@@ -98,12 +119,17 @@ func scanProjects(ctx context.Context, root string) (*projectNode, error) {
 					arg = "--absolute-git-dir"
 				}
 				cmd = exec.CommandContext(probeCtx, git, "-C", path, "rev-parse", arg)
+				hideConsole(cmd)
 				cmd.Env = env
 				output, err := cmd.Output()
 				if err == nil {
-					resolved, err := filepath.EvalSymlinks(strings.TrimSuffix(string(output), "\n"))
-					node.Repository = err == nil && resolved == path
+					// Git may name the same directory differently, so compare
+					// the directories rather than their spellings.
+					node.Repository = sameDirectory(strings.TrimSuffix(string(output), "\n"), path)
 					node.Bare = node.Repository && !marker
+					if node.Repository {
+						node.Source = readRepositorySource(ctx, git, path, env)
+					}
 				}
 			}
 			if probeCtx.Err() != nil {

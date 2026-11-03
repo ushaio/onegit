@@ -8,8 +8,9 @@ Onegit is a worktree-centered macOS app that gathers many Git repositories in on
 
 ## Features
 
-- Scan a parent directory for Git repositories and browse them in a sidebar tree.
+- Add folders to the sidebar and browse the Git repositories under each one in a tree; add as many folders as you like.
 - Pin projects above the directory tree, or sort them into your own groups and drag the groups into order.
+- See every repository of the added folders in one Repositories list beside Pinned, even the pinned ones.
 - Open a project's folder, choose an image as its icon, or remove it from the sidebar in its menu, with undo and restore.
 - Find projects and settings with the command palette (`⌘F`).
 - Switch between a project's worktrees by double-clicking one above its branches; open the shown one in the file manager, a terminal or a development tool chosen in Settings, or the repository on GitHub, from the title bar.
@@ -33,7 +34,7 @@ Onegit is not released yet. Build it from source as described in [Development](#
 
 ## Getting started
 
-1. Open Settings with `⌘,` and choose the parent directory that holds your projects.
+1. Add a folder with the `+` at the top of the sidebar, its right-click menu or the command palette (`⌘F`); folders holding your projects work best.
 2. Wait for the background scan to add repositories to the sidebar.
 3. Select a project; with several worktrees, double-click one under Worktrees to show it.
 4. Choose Current changes or All commits in the project sidebar.

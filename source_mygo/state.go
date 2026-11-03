@@ -22,11 +22,18 @@ type sidebarState struct {
 	GitView           *gitview.State             `yaml:"gitView,omitempty"`
 	Roots             map[string]*projectNode    `yaml:"roots,omitempty"`
 	PinnedOpen        *bool                      `yaml:"pinnedOpen,omitempty"`
+	// ReposOpen is the Repositories section, which lists every repository of
+	// the added folders.
+	ReposOpen         *bool                      `yaml:"reposOpen,omitempty"`
 	OtherOpen         *bool                      `yaml:"otherOpen,omitempty"`
 	Groups            map[string][]*projectGroup `yaml:"groups,omitempty"`
 }
 
 const mainWindowStateKey = "main"
+
+// globalRoot keys the sidebar state shared by every added folder: the folders
+// form one tree, with one selection, one pin list and one set of groups.
+const globalRoot = ""
 
 // windowStateStore keeps MyGo's state of the main window in state.yaml, so
 // either save writes the whole file. MyGo calls it on the main thread.
@@ -65,7 +72,7 @@ func (s *settings) restoreProjectSelection(onMain func(func())) {
 		s.cancelWorktrees()
 		s.selectedProject = nil
 	}
-	path := s.state.SelectedProjects[s.projectRoot]
+	path := s.state.SelectedProjects[globalRoot]
 	var selected, first *projectNode
 	// Without a saved selection, open the first project in sidebar order.
 	pinned, grouped, visible := sidebarProjects(s.projectTree, s.groupIDs())
@@ -173,8 +180,15 @@ func (s *settings) saveSidebarState() error {
 	if s.state.Roots == nil {
 		s.state.Roots = make(map[string]*projectNode)
 	}
-	if s.projectRoot != "" {
-		s.state.Roots[s.projectRoot] = s.projectTree
+	if s.projectTree != nil {
+		// Key the cache by the configured spelling of each folder, which is what
+		// rebuildTree looks up, even when scanning resolved a symlink.
+		roots := s.roots()
+		for i, node := range s.projectTree.Children {
+			if i < len(roots) {
+				s.state.Roots[roots[i]] = node
+			}
+		}
 	}
 	if err := saveYAML(s.statePath, s.state); err != nil {
 		s.stateProblem = s.text("保存状态失败：") + err.Error()
@@ -183,6 +197,76 @@ func (s *settings) saveSidebarState() error {
 	s.stateProblem = ""
 	walkProjects(s.projectTree, func(n *projectNode) { n.savedOpen = n.Open })
 	return nil
+}
+
+// rebuildTree assembles the sidebar tree from the added folders, in the order
+// they were added, reusing each folder's cached tree. The folders are the
+// tree's top-level rows, so pinning, groups and search span all of them.
+func (s *settings) rebuildTree() {
+	if s.state.Roots == nil {
+		s.state.Roots = make(map[string]*projectNode)
+	}
+	children := make([]*projectNode, 0, len(s.roots()))
+	for _, root := range s.roots() {
+		node := s.state.Roots[root]
+		if node == nil {
+			// A new folder starts expanded, so its projects show right away.
+			node = &projectNode{Path: root, Open: true}
+			s.state.Roots[root] = node
+		}
+		node.Root = true
+		children = append(children, node)
+	}
+	s.projectTree = &projectNode{Children: children}
+}
+
+// adoptLegacyRoot moves the sidebar state of the single folder earlier
+// versions kept to the keys the folder list uses.
+func (s *settings) adoptLegacyRoot() {
+	for _, root := range s.roots() {
+		if groups, ok := s.state.Groups[root]; ok {
+			if _, shared := s.state.Groups[globalRoot]; !shared {
+				s.state.Groups[globalRoot] = groups
+			}
+			delete(s.state.Groups, root)
+		}
+		if path, ok := s.state.SelectedProjects[root]; ok {
+			if _, shared := s.state.SelectedProjects[globalRoot]; !shared {
+				s.state.SelectedProjects[globalRoot] = path
+			}
+			delete(s.state.SelectedProjects, root)
+		}
+	}
+	// Collapse folders an earlier build listed twice under different spellings
+	// of one directory, such as a long name and its 8.3 short name.
+	kept := make([]string, 0, len(s.values.Roots))
+	dropped := false
+	for _, root := range s.values.Roots {
+		duplicate := false
+		for _, seen := range kept {
+			if samePath(seen, root) || sameDirectory(seen, root) {
+				duplicate = true
+				break
+			}
+		}
+		if duplicate {
+			dropped = true
+			continue
+		}
+		kept = append(kept, root)
+	}
+	if dropped {
+		next := s.values
+		next.Roots = kept
+		s.save(next)
+	}
+}
+
+// treeContains reports whether node belongs to tree.
+func treeContains(tree, node *projectNode) bool {
+	found := false
+	walkProjects(tree, func(n *projectNode) { found = found || n == node })
+	return found
 }
 
 // Reuse cached nodes so selection and expansion changes made during a scan
@@ -200,6 +284,7 @@ func mergeProjects(old, fresh *projectNode, missing map[string]bool) *projectNod
 	}
 	if fresh != nil {
 		old.Repository, old.Bare, old.Missing = fresh.Repository, fresh.Bare, false
+		old.Source = fresh.Source
 	}
 	children := map[string]*projectNode{}
 	if fresh != nil {

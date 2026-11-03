@@ -14,22 +14,35 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-func TestDirectoryPersistence(t *testing.T) {
+func TestFolderPersistence(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "Onegit", "settings.json")
-	if got, err := loadPreferences(path); err != nil || got.ProjectParentDir != "" {
+	if got, err := loadPreferences(path); err != nil || len(got.Roots) != 0 {
 		t.Fatalf("first launch: %+v, %v", got, err)
 	}
-	s := &settings{path: path}
-	dir := filepath.Join(t.TempDir(), "项目 with spaces")
-	s.setDirectory(dir)
+	s := &settings{path: path, systemLanguage: "en-US"}
+	first := filepath.Join(t.TempDir(), "项目 with spaces")
+	second := t.TempDir()
+	for _, dir := range []string{first, second} {
+		if !s.addRoot(dir) {
+			t.Fatalf("could not add %s: %s", dir, s.problem)
+		}
+	}
 	got, err := loadPreferences(path)
-	if err != nil || got.ProjectParentDir != dir || s.problem != "" {
+	if err != nil || len(got.Roots) != 2 || got.Roots[0] != first || got.Roots[1] != second || s.problem != "" {
 		t.Fatalf("restore: %+v, %v, %s", got, err, s.problem)
 	}
-	s.setDirectory("")
+	// A folder already listed, or nested in a listed folder, would show its
+	// repositories twice.
+	if s.addRoot(first) || s.addRoot(filepath.Join(first, "nested")) {
+		t.Fatal("duplicate folder accepted")
+	}
+	if len(s.values.Roots) != 2 || s.toast == nil {
+		t.Fatalf("duplicate folder changed the list: %+v", s.values.Roots)
+	}
+	s.removeFolder(first)
 	got, err = loadPreferences(path)
-	if err != nil || got.ProjectParentDir != "" {
-		t.Fatalf("clear: %+v, %v", got, err)
+	if err != nil || len(got.Roots) != 1 || got.Roots[0] != second {
+		t.Fatalf("remove: %+v, %v", got, err)
 	}
 }
 
@@ -39,10 +52,9 @@ func TestSaveFailurePreservesSelection(t *testing.T) {
 	if err := os.WriteFile(blocked, []byte("keep"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	s := &settings{path: filepath.Join(blocked, "settings.json"), values: preferences{ProjectParentDir: root}}
-	s.setDirectory("/new")
-	if s.values.ProjectParentDir != root || s.problem == "" {
-		t.Fatal("failed save changed selection or hid failure")
+	s := &settings{path: filepath.Join(blocked, "settings.json"), values: preferences{Roots: []string{root}}}
+	if s.addRoot(filepath.Join(filepath.Dir(root), "other")) || len(s.values.Roots) != 1 || s.values.Roots[0] != root || s.problem == "" {
+		t.Fatal("failed save changed folders or hid failure")
 	}
 	data, err := os.ReadFile(blocked)
 	if err != nil || string(data) != "keep" {
@@ -75,7 +87,6 @@ func TestSettingsInteraction(t *testing.T) {
 	for _, width := range []int{820, 1100} {
 		t.Run(strconv.Itoa(width), func(t *testing.T) {
 			s := &settings{path: filepath.Join(t.TempDir(), "settings.json"), systemLanguage: "zh-CN"}
-			s.setDirectory("/Users/example/" + strings.Repeat("long-project-directory-", 16))
 			tt := ui.NewTester(func(c *ui.Context) {
 				ui.Column(c).Fill().Children(func() { s.toolbar(c); s.welcome(c); s.render(c) })
 			}, width, 720)
@@ -83,11 +94,11 @@ func TestSettingsInteraction(t *testing.T) {
 			if err := tt.Click("设置"); err != nil {
 				t.Fatal(err)
 			}
-			if !s.open || !tt.HasText("项目父目录") || !tt.HasText(s.values.ProjectParentDir) {
+			if !s.open || !tt.HasText("通用") {
 				t.Fatal("settings missing", tt.Texts())
 			}
-			if _, ok := tt.Find("清除"); ok {
-				t.Fatal("unexpected extra directory action")
+			if tt.HasText("项目父目录") || tt.HasText("选择目录…") {
+				t.Fatal("the directory setting is still listed", tt.Texts())
 			}
 			layout := ui.NewTester(s.render, width, 720)
 			layout.SetPreferences(ui.Preferences{ReduceMotion: true})
@@ -96,9 +107,9 @@ func TestSettingsInteraction(t *testing.T) {
 			if !ok {
 				t.Fatal("missing dialog")
 			}
-			button, ok := layout.Find("选择目录…")
-			if !ok || button.X < panel.X || button.X+button.W > panel.X+panel.W || button.Y+button.H > panel.Y+panel.H {
-				t.Fatalf("directory button outside dialog: %+v / %+v", button, panel)
+			item, ok := layout.Find("语言偏好")
+			if !ok || item.X < panel.X || item.X+item.W > panel.X+panel.W || item.Y+item.H > panel.Y+panel.H {
+				t.Fatalf("language setting outside dialog: %+v / %+v", item, panel)
 			}
 			if err := tt.Click("关闭设置"); err != nil {
 				t.Fatal(err)
@@ -120,7 +131,8 @@ func TestSettingsInteraction(t *testing.T) {
 
 func TestAppearanceAndLanguage(t *testing.T) {
 	s := &settings{path: filepath.Join(t.TempDir(), "settings.json"), systemLanguage: "zh-CN"}
-	s.setDirectory("/Users/example/Projects")
+	s.values.Roots = []string{"/Users/example/Projects"}
+	s.save(s.values)
 	s.open = true
 	tt := ui.NewTester(s.render, 1100, 720)
 	tt.SetPreferences(ui.Preferences{ReduceMotion: true})
@@ -145,11 +157,11 @@ func TestAppearanceAndLanguage(t *testing.T) {
 	if err := tt.Click("English"); err != nil {
 		t.Fatal(err)
 	}
-	if !tt.HasText("Project parent directory") {
+	if !tt.HasText("Language preference") {
 		t.Fatal("language did not apply", tt.Texts())
 	}
 	restored, err := loadPreferences(s.path)
-	if err != nil || restored.Language != "en" || restored.Theme != "dark" || restored.ProjectParentDir != "/Users/example/Projects" {
+	if err != nil || restored.Language != "en" || restored.Theme != "dark" || len(restored.Roots) != 1 || restored.Roots[0] != "/Users/example/Projects" {
 		t.Fatalf("preferences not retained: %+v, %v", restored, err)
 	}
 	toolbar := ui.NewTester(func(c *ui.Context) { ui.Row(c).FillWidth().Children(func() { s.toolbar(c) }) }, 240, 400)
@@ -171,9 +183,9 @@ func TestAppearanceAndLanguage(t *testing.T) {
 	if err != nil || restored.Theme != "light" {
 		t.Fatal("toolbar theme not saved")
 	}
-	s.setDirectory("/new/path")
+	s.addRoot("/new/path")
 	if s.values.Language != "en" || s.theme() != "light" {
-		t.Fatal("directory change reset other preferences")
+		t.Fatal("adding a folder reset other preferences")
 	}
 }
 
@@ -190,7 +202,7 @@ func TestSystemLanguage(t *testing.T) {
 	}
 }
 
-func TestDirectorySelectionDoesNotBlock(t *testing.T) {
+func TestFolderSelectionDoesNotBlock(t *testing.T) {
 	s := &settings{open: true, path: filepath.Join(t.TempDir(), "settings.json"), systemLanguage: "zh-CN"}
 	selected := t.TempDir()
 	opened := make(chan mygo.OpenDialogOptions, 2)
@@ -216,7 +228,7 @@ func TestDirectorySelectionDoesNotBlock(t *testing.T) {
 	tt := ui.NewTester(s.render, 1100, 720)
 	tt.SetPreferences(ui.Preferences{ReduceMotion: true})
 	tt.Frame()
-	if !tt.HasText("项目父目录") {
+	if !tt.HasText("通用") {
 		t.Fatal("UI did not render while picker was waiting")
 	}
 	// Other preferences may change before the native picker returns.
@@ -224,7 +236,7 @@ func TestDirectorySelectionDoesNotBlock(t *testing.T) {
 	release <- struct{}{}
 	select {
 	case fn := <-callbacks:
-		if !s.choosingDirectory || s.values.ProjectParentDir != "" {
+		if !s.choosingDirectory || len(s.values.Roots) != 0 {
 			t.Fatal("worker mutated UI state")
 		}
 		fn()
@@ -236,16 +248,16 @@ func TestDirectorySelectionDoesNotBlock(t *testing.T) {
 		t.Fatal("duplicate picker opened")
 	default:
 	}
-	if s.choosingDirectory || s.values.ProjectParentDir != selected || s.values.Language != "en" {
+	if s.choosingDirectory || len(s.values.Roots) != 1 || s.values.Roots[0] != selected || s.values.Language != "en" {
 		t.Fatal("incorrect completion state")
 	}
 	got, err := loadPreferences(s.path)
-	if err != nil || got != s.values {
+	if err != nil || len(got.Roots) != 1 || got.Roots[0] != selected || got.Language != "en" {
 		t.Fatalf("selection not persisted: %+v, %v", got, err)
 	}
 }
 
-func TestDirectorySelectionResults(t *testing.T) {
+func TestFolderSelectionResults(t *testing.T) {
 	root := t.TempDir()
 	file := filepath.Join(root, "file")
 	if err := os.WriteFile(file, nil, 0600); err != nil {
@@ -263,9 +275,9 @@ func TestDirectorySelectionResults(t *testing.T) {
 		{name: "file", paths: []string{file}, wantError: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s := &settings{path: filepath.Join(t.TempDir(), "settings.json"), values: preferences{ProjectParentDir: root}}
-			s.applyDirectorySelection(tc.paths, tc.err)
-			if s.values.ProjectParentDir != root || (s.problem != "") != tc.wantError {
+			s := &settings{path: filepath.Join(t.TempDir(), "settings.json"), values: preferences{Roots: []string{root}}}
+			s.applyFolderSelection(tc.paths, tc.err)
+			if len(s.values.Roots) != 1 || s.values.Roots[0] != root || (s.problem != "") != tc.wantError {
 				t.Fatalf("unexpected result: %+v", s)
 			}
 		})

@@ -45,10 +45,6 @@ func (s *settings) setLanguage(value string) {
 }
 
 func (s *settings) categories() []components.SettingsCategory {
-	description := s.text("尚未选择目录")
-	if s.values.ProjectParentDir != "" {
-		description = s.values.ProjectParentDir
-	}
 	return []components.SettingsCategory{
 		{ID: "general", Title: s.text("通用"), Section: s.text("应用"), Icon: lucide.Settings(), Groups: []components.SettingsGroup{
 			{ID: "language", Items: []components.SettingsItem{{ID: "language", Title: s.text("语言"), Description: s.text("修改后立即生效，并自动保存。"), Build: func(c *ui.Context) {
@@ -64,12 +60,6 @@ func (s *settings) categories() []components.SettingsCategory {
 					}
 				}).Changed() {
 					s.setLanguage(value)
-					c.Invalidate()
-				}
-			}}}},
-			{ID: "projects", Title: s.text("项目"), Items: []components.SettingsItem{{ID: "parent-directory", Title: s.text("项目父目录"), Description: description, Keywords: []string{"路径", "文件夹", "directory", "folder"}, Build: func(c *ui.Context) {
-				if components.Button(c, s.text("选择目录…"), components.ButtonSecondary).Shrink(0).Disabled(s.choosingDirectory).Clicked() {
-					s.chooseDirectory()
 					c.Invalidate()
 				}
 			}}}},

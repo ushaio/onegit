@@ -83,14 +83,22 @@ func TestCommandDismissalAndSettingsDestinations(t *testing.T) {
 	if !tt.Focused("Search projects and settings") {
 		t.Fatal("trigger focus not restored")
 	}
-	for _, tc := range []struct{ query, title string }{{"language", "Language preference"}, {"directory", "Choose folder…"}, {"settings", "Project parent directory"}} {
-		tt.Key(ui.Cmd, ui.KeyF)
-		tt.Type(tc.query)
-		tt.Key(0, ui.KeyEnter)
-		tt.Frame()
-		if !s.open || !tt.HasText(tc.title) {
-			t.Fatalf("%s destination missing: %v", tc.query, tt.Texts())
-		}
-		tt.Key(0, ui.KeyEscape)
+	// A settings destination still opens the matching row.
+	tt.Key(ui.Cmd, ui.KeyF)
+	tt.Type("language")
+	tt.Key(0, ui.KeyEnter)
+	tt.Frame()
+	if !s.open || !tt.HasText("Language preference") {
+		t.Fatalf("language destination missing: %v", tt.Texts())
+	}
+	tt.Key(0, ui.KeyEscape)
+
+	// Folders are added from the palette instead of a settings row.
+	found := false
+	for _, item := range s.commandItems() {
+		found = found || item.ID == "projects/add"
+	}
+	if !found {
+		t.Fatal("add folder command is missing")
 	}
 }

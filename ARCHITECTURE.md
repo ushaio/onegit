@@ -28,16 +28,16 @@ Onevra and MyGo versions are pinned in [go.mod](source_mygo/go.mod). Onevra prov
 - A remote the user set to fetch automatically is the only write that runs without a click, when a worktree opens; nothing polls.
 - Status is read when a project is entered and after a user action. Onegit does not poll or watch files.
 - Git calls run off the main thread with a clean Git environment. Results return to the main thread and are dropped if the project or worktree changed meanwhile.
-- The sidebar tree mirrors the disk, except projects the user removed. It does not infer links between a repository and worktrees outside the parent directory.
-- Projects whose paths are gone leave the cache on the next scan; their files are never touched. Only a confirmed missing path counts; permission or Git errors and a missing parent directory do not.
+- The sidebar tree mirrors the disk, except projects the user removed. It does not infer links between a repository and worktrees outside the added folders.
+- Projects whose paths are gone leave the cache on the next scan; their files are never touched. Only a confirmed missing path counts; permission or Git errors and a missing added folder do not.
 - Projects switch through the sidebar only, and worktrees through the view's Worktrees group.
 - Empty states stay blank, with no welcome or placeholder text. Errors are always shown.
 
 ## Core flows
 
-**Startup.** Onegit restores the cached tree for the selected parent directory, then scans it in the background. Scan results merge into the cache by path and keep the user's expansion changes. See [Project discovery](docs/architecture/project-discovery.md).
+**Startup.** Onegit restores the cached tree of each added folder, then scans them in the background. Scan results merge into the cache by path and keep the user's expansion changes. See [Project discovery](docs/architecture/project-discovery.md).
 
-**Opening a project.** Selecting a repository lists all its worktrees, including those outside the parent directory. Onegit then reads changes, commits and refs for the selected worktree. See [Repository page](docs/architecture/repository-page.md).
+**Opening a project.** Selecting a repository lists all its worktrees, including those outside the added folders. Onegit then reads changes, commits and refs for the selected worktree. See [Repository page](docs/architecture/repository-page.md).
 
 **User Git actions.** The Git view's toolbar in the title bar runs one action at a time per worktree in the background, so other repositories and worktrees stay free. Failures show as toasts, and the view rereads the worktree when the action finishes.
 

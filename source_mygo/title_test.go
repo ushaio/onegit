@@ -68,7 +68,7 @@ func TestRepositoryTitleLaunchers(t *testing.T) {
 	testGit(t, "init", repo)
 	testGit(t, "-C", repo, "remote", "add", "origin", "git@github.com:o/demo.git")
 	s := &settings{statePath: filepath.Join(t.TempDir(), "state.yaml"), systemLanguage: "en",
-		values: preferences{ProjectParentDir: root, Editor: launchers.None}}
+		values: preferences{Roots: []string{root}, Editor: launchers.None}}
 	for _, id := range []string{"finder", "ghostty", "vscode"} {
 		l, _ := launchers.ByID(id)
 		s.installed = append(s.installed, launchers.Installed{Launcher: l, Path: "/Applications/" + l.Name + ".app"})

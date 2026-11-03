@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 
 	"go.yaml.in/yaml/v3"
 
@@ -19,6 +21,10 @@ import (
 )
 
 type preferences struct {
+	// Roots are the folders the sidebar lists, in the order they were added.
+	Roots []string `json:"roots,omitempty" yaml:"roots,omitempty"`
+	// ProjectParentDir is the single folder of earlier versions; loading
+	// turns it into Roots and drops it.
 	ProjectParentDir string           `json:"projectParentDir,omitempty" yaml:"projectParentDir,omitempty"`
 	Theme            mygo.ThemeSource `json:"theme,omitempty" yaml:"theme,omitempty"`
 	Language         string           `json:"language,omitempty" yaml:"language,omitempty"`
@@ -41,6 +47,10 @@ func loadPreferences(path string) (preferences, error) {
 	if err != nil {
 		return preferences{}, err
 	}
+	if len(p.Roots) == 0 && p.ProjectParentDir != "" {
+		p.Roots = []string{p.ProjectParentDir}
+	}
+	p.ProjectParentDir = ""
 	if p.Theme != "" && p.Theme != mygo.ThemeSystem && p.Theme != mygo.ThemeLight && p.Theme != mygo.ThemeDark {
 		return preferences{}, fmt.Errorf("unknown theme %q", p.Theme)
 	}
@@ -62,7 +72,6 @@ type settings struct {
 	state             sidebarState
 	statePath         string
 	stateProblem      string
-	projectRoot       string
 	projectTree       *projectNode
 	selectedProject   *projectNode
 	scanning          bool
@@ -107,6 +116,7 @@ func newSettings(dir string) *settings {
 		if stateErr != nil {
 			s.stateProblem = s.text("读取状态失败：") + stateErr.Error()
 		}
+		s.adoptLegacyRoot()
 	}
 	if err != nil {
 		s.problem = s.text("读取设置失败：") + err.Error()
@@ -126,6 +136,9 @@ func (s *settings) show() {
 }
 
 func (s *settings) toolbar(c *ui.Context) {
+	if sidebar.IconButton(c, lucide.Plus(), s.text("添加文件夹")).Label(s.text("添加文件夹")).Clicked() {
+		s.addFolder()
+	}
 	if sidebar.IconButton(c, lucide.Settings(), s.text("设置")+" (⌘,)").Label(s.text("设置")).Clicked() {
 		s.show()
 	}
@@ -146,7 +159,8 @@ func (s *settings) toolbar(c *ui.Context) {
 	})
 }
 
-func (s *settings) chooseDirectory() {
+// addFolder asks for a folder to add to the sidebar.
+func (s *settings) addFolder() {
 	s.startDirectorySelection(mygo.Dialog.Open, mygo.RunOnMain)
 }
 
@@ -156,8 +170,11 @@ func (s *settings) startDirectorySelection(open func(mygo.OpenDialogOptions) ([]
 	}
 	s.choosingDirectory = true
 	opts := mygo.OpenDialogOptions{
-		Parent: s.window, Title: s.text("选择项目父目录"), Message: s.text("选择你常用的项目所在的父目录。"),
-		ButtonLabel: s.text("选择"), Directory: true, DefaultPath: s.values.ProjectParentDir,
+		Parent: s.window, Title: s.text("添加文件夹"), Message: s.text("选择要加入侧栏的文件夹。"),
+		ButtonLabel: s.text("添加"), Directory: true,
+	}
+	if roots := s.roots(); len(roots) > 0 {
+		opts.DefaultPath = filepath.Dir(roots[len(roots)-1])
 	}
 	// Dialog.Open waits for dismissal. Never wait inside a UI frame: native
 	// events must be able to finish that frame while the sheet is open.
@@ -165,7 +182,7 @@ func (s *settings) startDirectorySelection(open func(mygo.OpenDialogOptions) ([]
 		paths, err := open(opts)
 		onMain(func() {
 			s.choosingDirectory = false
-			s.applyDirectorySelection(paths, err)
+			s.applyFolderSelection(paths, err)
 			if s.window != nil {
 				s.window.Invalidate()
 			}
@@ -173,7 +190,7 @@ func (s *settings) startDirectorySelection(open func(mygo.OpenDialogOptions) ([]
 	}()
 }
 
-func (s *settings) applyDirectorySelection(paths []string, err error) {
+func (s *settings) applyFolderSelection(paths []string, err error) {
 	if err != nil {
 		s.problem = s.text("选择目录失败：") + err.Error()
 		return
@@ -190,16 +207,107 @@ func (s *settings) applyDirectorySelection(paths []string, err error) {
 		s.problem = s.text("请选择文件夹。")
 		return
 	}
-	s.setDirectory(filepath.Clean(paths[0]))
+	s.addRoot(filepath.Clean(paths[0]))
 }
 
-func (s *settings) setDirectory(path string) {
+// roots lists the added folders in sidebar order.
+func (s *settings) roots() []string {
+	return s.values.Roots
+}
+
+// addRoot adds a folder to the sidebar and scans it. A folder already listed,
+// or one that contains or sits inside a listed folder, is refused so that no
+// repository appears twice.
+func (s *settings) addRoot(path string) bool {
+	path = folderPath(path)
+	for _, root := range s.roots() {
+		resolved := folderPath(root)
+		switch {
+		case samePath(resolved, path):
+			s.toast = &ui.Toast{
+				ID: "folder-listed", Title: s.text("该文件夹已在侧栏中"), Description: root,
+				Type: components.ToastError,
+			}
+			s.invalidate()
+			return false
+		case withinFolder(resolved, path):
+			s.toast = &ui.Toast{
+				ID: "folder-listed", Title: fmt.Sprintf(s.text("该文件夹已包含在「%s」中"), projectName(root)),
+				Type: components.ToastError,
+			}
+			s.invalidate()
+			return false
+		case withinFolder(path, resolved):
+			s.toast = &ui.Toast{
+				ID: "folder-listed", Title: fmt.Sprintf(s.text("「%s」已包含在此文件夹中"), projectName(root)),
+				Type: components.ToastError,
+			}
+			s.invalidate()
+			return false
+		}
+	}
 	next := s.values
-	next.ProjectParentDir = path
-	changed := next.ProjectParentDir != s.values.ProjectParentDir
-	if s.save(next) && changed && s.window != nil {
+	next.Roots = append(append([]string{}, s.roots()...), path)
+	if !s.save(next) {
+		return false
+	}
+	// Without a window no one shows the result; tests drive the scan.
+	if s.window != nil {
 		s.scanProjects()
 	}
+	return true
+}
+
+// removeFolder drops a folder from the sidebar without touching its files. Its
+// cached tree stays, so adding the folder again restores pins and groups.
+func (s *settings) removeFolder(path string) {
+	path = folderPath(path)
+	roots := s.roots()
+	kept := make([]string, 0, len(roots))
+	for _, root := range roots {
+		if !samePath(folderPath(root), path) {
+			kept = append(kept, root)
+		}
+	}
+	if len(kept) == len(roots) {
+		return
+	}
+	next := s.values
+	next.Roots = kept
+	if !s.save(next) {
+		return
+	}
+	if s.window != nil {
+		s.scanProjects()
+	}
+	s.invalidate()
+}
+
+// folderPath normalizes a folder the way scanning does: absolute and clean,
+// keeping the spelling the user picked.
+func folderPath(path string) string {
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	return filepath.Clean(path)
+}
+
+// withinFolder reports whether path is folder or lies inside it.
+func withinFolder(folder, path string) bool {
+	if samePath(folder, path) {
+		return true
+	}
+	rel, err := filepath.Rel(filepath.Clean(folder), filepath.Clean(path))
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// samePath compares two folders the way their filesystem does.
+func samePath(a, b string) bool {
+	a, b = filepath.Clean(a), filepath.Clean(b)
+	if a == b {
+		return true
+	}
+	return runtime.GOOS == "windows" && strings.EqualFold(a, b)
 }
 
 func (s *settings) save(next preferences) bool {

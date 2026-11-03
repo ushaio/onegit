@@ -120,7 +120,10 @@ func TestScanFailuresAndEmpty(t *testing.T) {
 func TestProjectTreeInteraction(t *testing.T) {
 	leaf := &projectNode{Path: "/projects/group/repo", Repository: true, Open: true}
 	group := &projectNode{Path: "/projects/group", Open: true, Children: []*projectNode{leaf}}
-	s := &settings{systemLanguage: "zh-CN", values: preferences{ProjectParentDir: "/projects"}, projectTree: &projectNode{Path: "/projects", Open: true, Children: []*projectNode{group, {Path: "/projects/repo", Repository: true}}}}
+	s := &settings{systemLanguage: "zh-CN", values: preferences{Roots: []string{"/projects"}}, state: sidebarState{Roots: map[string]*projectNode{
+		"/projects": {Path: "/projects", Open: true, Children: []*projectNode{group, {Path: "/projects/repo", Repository: true}}},
+	}}}
+	s.rebuildTree()
 	tt := ui.NewTester(s.worktreeSidebar, 300, 720)
 	tt.SetPreferences(ui.Preferences{ReduceMotion: true})
 	tt.Frame() // Repeated leaf names must have independent identities.
@@ -161,7 +164,7 @@ func TestProjectContextMenu(t *testing.T) {
 	for _, repo := range []string{alpha, beta, filepath.Join(group, "nested")} {
 		testGit(t, "init", repo)
 	}
-	s := &settings{statePath: filepath.Join(t.TempDir(), "state.yaml"), values: preferences{ProjectParentDir: root}, systemLanguage: "en-US"}
+	s := &settings{statePath: filepath.Join(t.TempDir(), "state.yaml"), values: preferences{Roots: []string{root}}, systemLanguage: "en-US"}
 	callbacks := make(chan func(), 64)
 	s.startProjectScan(func(fn func()) { callbacks <- fn })
 	awaitNavigation(t, s, callbacks)
@@ -222,8 +225,8 @@ func TestProjectContextMenu(t *testing.T) {
 	if s.selectedProject == nil || s.selectedProject.Path != beta {
 		t.Fatalf("selection after removal: %+v", s.selectedProject)
 	}
-	if s.state.SelectedProjects[root] != beta {
-		t.Fatalf("saved selection after removal: %q", s.state.SelectedProjects[root])
+	if s.state.SelectedProjects[globalRoot] != beta {
+		t.Fatalf("saved selection after removal: %q", s.state.SelectedProjects[globalRoot])
 	}
 	saved, err := loadSidebarState(s.statePath)
 	if err != nil {
@@ -273,8 +276,9 @@ func TestProjectContextMenu(t *testing.T) {
 }
 
 func TestScanCompletionIgnoresOldDirectory(t *testing.T) {
-	s := &settings{values: preferences{ProjectParentDir: t.TempDir()}}
-	testGit(t, "init", s.values.ProjectParentDir)
+	first := t.TempDir()
+	testGit(t, "init", first)
+	s := &settings{values: preferences{Roots: []string{first}}}
 	callbacks := make(chan func(), 2)
 	s.startProjectScan(func(fn func()) { callbacks <- fn })
 	var oldCompletion func()
@@ -283,7 +287,7 @@ func TestScanCompletionIgnoresOldDirectory(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("first scan did not complete")
 	}
-	s.values.ProjectParentDir = t.TempDir()
+	s.values.Roots = []string{t.TempDir()}
 	s.startProjectScan(func(fn func()) { callbacks <- fn })
 	select {
 	case fn := <-callbacks:
@@ -292,8 +296,14 @@ func TestScanCompletionIgnoresOldDirectory(t *testing.T) {
 		t.Fatal("scan did not complete")
 	}
 	oldCompletion()
-	if s.scanning || s.projectTree != nil || s.scanProblem != "" {
-		t.Fatalf("unexpected completion: %+v", s)
+	found := 0
+	walkProjects(s.projectTree, func(node *projectNode) {
+		if node.Repository {
+			found++
+		}
+	})
+	if s.scanning || found != 0 || s.scanProblem != "" {
+		t.Fatalf("unexpected completion: %d repositories, %q", found, s.scanProblem)
 	}
 }
 
@@ -319,9 +329,10 @@ func TestProjectIcon(t *testing.T) {
 	callbacks := make(chan func(), 4)
 	s := &settings{
 		statePath: filepath.Join(t.TempDir(), "state.yaml"), systemLanguage: "en-US",
-		values: preferences{ProjectParentDir: root}, projectRoot: root,
-		projectTree: &projectNode{Path: root, Open: true, Children: []*projectNode{repo}},
+		values: preferences{Roots: []string{root}},
+		state:  sidebarState{Roots: map[string]*projectNode{root: {Path: root, Open: true, Children: []*projectNode{repo}}}},
 	}
+	s.rebuildTree()
 	s.repo.dispatch = func(fn func()) { callbacks <- fn }
 	opened := make(chan mygo.OpenDialogOptions, 2)
 	choice := logo

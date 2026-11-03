@@ -213,7 +213,7 @@ func TestRememberProjectAndWorktreeSelections(t *testing.T) {
 	testGit(t, "-C", repoA, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit", "--allow-empty", "-m", "initial")
 	linked := filepath.Join(root, "linked")
 	testGit(t, "-C", repoA, "worktree", "add", "-b", "feature", linked)
-	s := &settings{statePath: filepath.Join(t.TempDir(), "state.yaml"), values: preferences{ProjectParentDir: root}}
+	s := &settings{statePath: filepath.Join(t.TempDir(), "state.yaml"), values: preferences{Roots: []string{root}}}
 	finishScan(t, s)
 	if s.selectedProject == nil || s.selectedProject.Path != repoA || s.overview.SelectedPath != repoA {
 		t.Fatal("first repository and worktree were not selected by default")
@@ -269,14 +269,14 @@ func TestRememberProjectAndWorktreeSelections(t *testing.T) {
 	if s.overview.SelectedPath != repoB {
 		t.Fatal("restart lost the other repository's worktree")
 	}
-	// Each parent directory retains its own last repository.
-	s.values.ProjectParentDir = t.TempDir()
+	// Removing a folder drops its selection until the folder comes back.
+	s.values.Roots = []string{t.TempDir()}
 	s.startProjectScan(dispatch)
 	finish(s)
 	if s.selectedProject != nil {
-		t.Fatal("repository selection leaked across parent directories")
+		t.Fatal("repository selection outlived its folder")
 	}
-	s.values.ProjectParentDir = root
+	s.values.Roots = []string{root}
 	s.startProjectScan(dispatch)
 	finish(s)
 	if s.selectedProject == nil || s.selectedProject.Path != repoB || s.overview.SelectedPath != repoB {
@@ -302,14 +302,13 @@ func TestEmptyNavigationContent(t *testing.T) {
 			t.Fatalf("empty content contains prompts: %v", view.Texts())
 		}
 	}
-	for _, parent := range []string{"", "/empty"} {
-		s := &settings{values: preferences{ProjectParentDir: parent}, systemLanguage: "zh-CN"}
+	for _, roots := range [][]string{nil, {"/empty"}} {
+		s := &settings{values: preferences{Roots: roots}, systemLanguage: "zh-CN"}
+		s.rebuildTree()
 		view := ui.NewTester(s.worktreeSidebar, 300, 720)
 		view.Frame()
-		for _, prompt := range []string{"请在设置中选择项目父目录。", "未找到 Git 项目。"} {
-			if view.HasText(prompt) {
-				t.Fatalf("empty sidebar contains %q", prompt)
-			}
+		if view.HasText("未找到 Git 项目。") {
+			t.Fatal("empty sidebar contains a prompt")
 		}
 	}
 }
@@ -323,12 +322,12 @@ func TestDefaultRepositoryUsesSidebarOrder(t *testing.T) {
 	for _, repo := range []string{a, b} {
 		testGit(t, "init", repo)
 	}
-	s := &settings{values: preferences{ProjectParentDir: root}}
+	s := &settings{values: preferences{Roots: []string{root}}}
 	finishScan(t, s)
 	first, pinned := findProject(s.projectTree, a), findProject(s.projectTree, b)
 	pinned.Pinned = true
 	s.selectedProject = nil
-	s.state.SelectedProjects[root] = "/removed"
+	s.state.SelectedProjects[globalRoot] = "/removed"
 	callbacks := make(chan func(), 64)
 	s.restoreProjectSelection(func(fn func()) { callbacks <- fn })
 	awaitNavigation(t, s, callbacks)

@@ -27,6 +27,7 @@ func listWorktrees(ctx context.Context, path string) ([]worktree, error) {
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "-C", path, "worktree", "list", "--porcelain", "-z")
+	hideConsole(cmd)
 	for _, entry := range os.Environ() {
 		if !strings.HasPrefix(entry, "GIT_") {
 			cmd.Env = append(cmd.Env, entry)

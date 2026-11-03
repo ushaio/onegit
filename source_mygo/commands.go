@@ -52,7 +52,7 @@ func (s *settings) commandItems() []command.Item {
 		{ID: "settings", Title: s.text("设置"), Group: s.text("设置"), Icon: lucide.Settings(), Keywords: []string{"设置", "settings", "preferences"}},
 		{ID: "settings/theme", Title: s.text("主题"), Group: s.text("设置"), Icon: lucide.Palette(), Keywords: []string{"主题", "外观", "theme", "appearance", "light", "dark"}},
 		{ID: "settings/language", Title: s.text("语言"), Group: s.text("设置"), Icon: lucide.Settings(), Keywords: []string{"语言", "language", "English", "中文"}},
-		{ID: "settings/directory", Title: s.text("项目父目录"), Group: s.text("设置"), Icon: lucide.Folder(), Keywords: []string{"项目父目录", "路径", "文件夹", "project", "parent", "directory", "folder"}},
+		{ID: "projects/add", Title: s.text("添加文件夹…"), Group: s.text("项目"), Icon: lucide.FolderPlus(), Keywords: []string{"添加", "文件夹", "目录", "add", "folder", "directory", "project"}},
 	}
 	if s.hasRemovedProjects() {
 		items = append(items, command.Item{ID: "projects/restore", Title: s.text("恢复已移除的项目"), Group: s.text("项目"), Icon: lucide.Folder(), Keywords: []string{"恢复", "移除", "项目", "restore", "removed", "project"}})
@@ -87,10 +87,13 @@ func (s *settings) activateCommand(id string) {
 			s.view.Category = "appearance"
 		case "settings/language":
 			s.view.Query = s.text("语言")
-		case "settings/directory":
-			s.view.Query = s.text("项目父目录")
 		}
 		s.show()
+		return
+	}
+	if id == "projects/add" {
+		s.commands.open = false
+		s.addFolder()
 		return
 	}
 	if id == "projects/restore" {

@@ -5,10 +5,11 @@ User-facing release notes for Onegit.
 ## [Unreleased]
 
 - Browse many Git repositories in one native window; it reopens with the same size and sidebar layout.
-- Choose the project parent directory, theme and language in Settings, saved under `~/.onegit/` with legacy settings imported.
-- Scan the parent directory in the background into a project tree that drops projects no longer on disk and remembers expansion.
+- Add folders to the sidebar from its header, its menu or the command palette, and remove them there; the first folder replaces the old single project directory. Choose the theme and language in Settings, saved under `~/.onegit/` with legacy settings imported.
+- Scan every added folder in the background into one project tree that drops projects no longer on disk and remembers expansion.
 - Pin projects, or sort them into your own groups that you rename, delete and drag into order; projects start in Ungrouped Projects and every group collapses independently.
 - Open a project's folder, choose an image from it as the project's icon, or remove the project from the sidebar, from its menu; a removed project stays hidden until you undo or restore it.
+- Show the host's mark, GitHub, Gitee or GitCode, on a repository without a chosen icon.
 - Find projects and open Settings from the command palette (`⌘F`).
 - See a project's worktrees above its branches when it has several and double-click one to switch to it, returning to the last project and worktree.
 - Open the shown worktree in the file manager, a terminal or a development tool, chosen or hidden in Settings, or the repository's GitHub page, from buttons after the title bar's Git actions.
@@ -30,4 +31,6 @@ User-facing release notes for Onegit.
 - See the full commit graph with collapsible merges, find, avatars, and commit details with diffs and file contents.
 - Pin refs, show lost commits from the reflog, search history by message, author, changed path or content, compare commits or a commit with the worktree, and open a file's history or blame.
 - Install Onegit on macOS, Windows and Linux from a disk image, an installer, a Debian package or an archive.
-- Avoid the UI freezing while choosing the project parent directory.
+- See every repository of the added folders in a Repositories section beside Pinned, including the ones pinned or moved to a group.
+- Avoid the UI freezing while choosing a folder.
+- Reinstalling on Windows starts from the folder Onegit is already installed in, instead of always offering `%LOCALAPPDATA%\Programs\Onegit`.
