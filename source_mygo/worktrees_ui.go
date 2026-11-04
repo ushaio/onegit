@@ -30,6 +30,10 @@ func (s *settings) cancelWorktrees() {
 func (s *settings) selectProject(node *projectNode, onMain func(func())) {
 	s.cancelWorktrees()
 	s.repo.dispatch = onMain
+	if node != s.selectedProject {
+		// Another repository opens on its Git page.
+		s.content = contentGit
+	}
 	s.selectedProject = node
 	if node == nil || !node.Repository {
 		return

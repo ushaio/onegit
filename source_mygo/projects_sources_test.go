@@ -33,8 +33,13 @@ func TestRepositorySourceParsing(t *testing.T) {
 
 func TestSourceIconKnownHosts(t *testing.T) {
 	for _, source := range []string{"github", "gitee", "gitcode"} {
-		if sourceIcon(source) == nil {
-			t.Errorf("sourceIcon(%q) = nil", source)
+		icon := sourceIcon(source)
+		if icon == nil {
+			t.Fatalf("sourceIcon(%q) = nil", source)
+		}
+		// Parsing here surfaces a malformed embedded SVG before it reaches the UI.
+		if icon() == nil {
+			t.Errorf("sourceIcon(%q) did not parse", source)
 		}
 	}
 	if sourceIcon("gitlab") != nil {

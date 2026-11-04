@@ -324,6 +324,9 @@ func (s *settings) projectRow(c *ui.Context, node *projectNode, depth int, visib
 				return
 			}
 			m.Separator()
+			if m.Item(s.text("进入终端")).Chosen() {
+				s.enterTerminal(node)
+			}
 			action := "置顶项目"
 			if node.Pinned {
 				action = "取消置顶"

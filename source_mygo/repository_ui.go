@@ -121,18 +121,19 @@ func (s *settings) repositoryPage(c *ui.Context) {
 	ui.Column(c).Fill().Padding(sidebar.HeaderHeight(c), 0, 0, 0).Children(func() {
 		// A hairline closes the title bar above the page.
 		ui.Box(c).FillWidth().Height(1).Shrink(0).Background(c.Theme().Border)
-		if s.overview.Loading {
+		if s.content == contentTerminal {
+			s.terminalPage(c)
+		} else if s.overview.Loading {
 			s.repositoryMessage(c, s.text("正在读取 worktree…"))
-			return
-		}
-		if s.overview.Problem != "" {
+		} else if s.overview.Problem != "" {
 			s.repositoryMessage(c, s.text("读取 worktree 失败：")+s.overview.Problem)
-			return
+		} else {
+			view := s.gitView()
+			// The language preference can change while the view lives.
+			view.SetLanguage(s.language())
+			ui.Column(c).Grow(1).FillWidth().MinHeight(0).Children(func() { view.Layout(c) })
 		}
-		view := s.gitView()
-		// The language preference can change while the view lives.
-		view.SetLanguage(s.language())
-		ui.Column(c).Grow(1).FillWidth().MinHeight(0).Children(func() { view.Layout(c) })
+		s.terminalDialogView(c)
 	})
 }
 
@@ -159,7 +160,10 @@ func (s *settings) repositoryTitle(c *ui.Context) {
 			components.Text(c, projectName(project.Path)).Bold().SingleLine().Shrink(1).MinWidth(0)
 		})
 		s.gitView().Toolbar(c, size)
-		ui.Row(c).Key("launchers").Grow(1).Basis(0).Justify(ui.End).AlignItems(ui.Center).Gap(6).Children(func() { s.launcherButtons(c) })
+		ui.Row(c).Key("launchers").Grow(1).Basis(0).Justify(ui.End).AlignItems(ui.Center).Gap(6).Children(func() {
+			s.pageTabSwitch(c)
+			s.launcherButtons(c)
+		})
 	})
 }
 

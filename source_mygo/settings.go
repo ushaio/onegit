@@ -68,6 +68,15 @@ func savePreferences(path string, p preferences) error {
 type settings struct {
 	commands          commandState
 	overview          projectOverview
+	content           contentPage
+	terminalTabs      map[string][]*terminalTab
+	terminalActive    map[string]int
+	terminalDialog    terminalDialog
+	// terminalDrag and terminalTabBounds keep a dragged tab's offset and the
+	// tabs' last laid-out rectangles while the pointer reorders them.
+	terminalDrag      map[int]*ui.Point
+	terminalTabBounds map[int]ui.Rect
+	terminalNextTabID int
 	repo              repositoryState
 	state             sidebarState
 	statePath         string
@@ -100,7 +109,13 @@ type settings struct {
 }
 
 func newSettings(dir string) *settings {
-	s := &settings{systemLanguage: mygo.App.Locale()}
+	s := &settings{
+		systemLanguage: mygo.App.Locale(),
+		terminalTabs:      make(map[string][]*terminalTab),
+		terminalActive:    make(map[string]int),
+		terminalDrag:      make(map[int]*ui.Point),
+		terminalTabBounds: make(map[int]ui.Rect),
+	}
 	var err error
 	if dir != "" {
 		s.path = filepath.Join(dir, "config.yaml")

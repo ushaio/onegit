@@ -1,6 +1,6 @@
 # Repository page
 
-The repository page shows one selected project. The window's title bar holds the project's name on the left, the view's toolbar in the middle and the launchers on the right, as in Neorio, rather than a strip of their own. A hairline separates it from the [Git view](git-view.md) of the selected worktree. Onegit owns the title bar's layout and which worktree is shown; the view owns its toolbar and everything below it.
+The repository page shows one selected project. The window's title bar holds the project's name on the left, the view's toolbar in the middle and the page tabs and launchers on the right, as in Neorio, rather than a strip of their own. A hairline separates it from the [Git view](git-view.md) of the selected worktree. Onegit owns the title bar's layout and which worktree is shown; the view owns its toolbar and everything below it.
 
 ## Worktrees
 
@@ -17,6 +17,16 @@ Raised icon buttons on the right are drawn with each kind's glyph rather than th
 - The file manager, terminal and development tool open the selected worktree. Onegit finds them with the shared `launchers` package off the main thread at startup; Settings chooses the terminal and tool, or hides either, saved as `terminal` and `editor` in `config.yaml`.
 - GitHub opens the view's `GitHubPage`: the page of the remote the branch tracks, else of `origin` or the only remote, shown only when that is on GitHub.
 - A launcher that fails to open shows a toast.
+
+## Built-in terminal
+
+The terminal button is a menu: the chosen external terminal, when one is installed, and Onegit's built-in terminal. The project's menu opens the same built-in terminal at the repository's main worktree.
+
+The Git and Terminal page tabs sit on the title bar's right, and switching keeps every terminal session running. The built-in terminal fills the content beside a list of the repository's launch shortcuts, saved in `state.yaml` under `terminalPresets`.
+
+Each shortcut opens a tab from a form asking its name, start command and working directory; the working directory is read-only and picked from a folder chooser starting at the current path. The command is typed into a login shell so the shell stays after it exits. A shortcut reuses the untouched default shell tab instead of opening a second one.
+
+Tabs switch between the open terminals and can be dragged into another order. A tab closes from its menu, which also closes the others or those to its right, or from the close button; switching to Terminal with none open starts a shell.
 
 ## Onegit's choices for the view
 

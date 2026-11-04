@@ -64,6 +64,7 @@ func main() {
 			if settings.scanCancel != nil {
 				settings.scanCancel()
 			}
+			settings.closeTerminals()
 			mygo.App.Quit()
 		})
 	})

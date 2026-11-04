@@ -84,7 +84,7 @@ func TestRepositoryTitleLaunchers(t *testing.T) {
 	}, 1000, 52)
 	tt.Frame()
 	stash, _ := tt.Find("Stash")
-	for _, label := range []string{"Open in Finder", "Open in Ghostty", "Open on GitHub"} {
+	for _, label := range []string{"Open in Finder", "Terminal menu", "Open on GitHub"} {
 		if r, ok := tt.Find(label); !ok || r.X < stash.X || r.X+r.W > 1000 {
 			t.Fatalf("%s missing or before the Git actions: %v", label, tt.Texts())
 		}
@@ -98,7 +98,19 @@ func TestRepositoryTitleLaunchers(t *testing.T) {
 	if opened := tt.OpenedURLs(); len(opened) != 1 || opened[0] != "https://github.com/o/demo" {
 		t.Fatalf("opened: %v", opened)
 	}
-	if err := tt.Click("Open in Ghostty"); err != nil {
+	if err := tt.Click("Terminal menu"); err != nil {
+		t.Fatal(err)
+	}
+	terminalMenu := tt.Menu()
+	hasExternal, hasBuiltin := false, false
+	for _, item := range terminalMenu {
+		hasExternal = hasExternal || item == "Open in Ghostty"
+		hasBuiltin = hasBuiltin || item == "Open in Built-in Terminal"
+	}
+	if !hasExternal || !hasBuiltin {
+		t.Fatalf("terminal menu: %q", terminalMenu)
+	}
+	if err := tt.ChooseMenuItem("Open in Ghostty"); err != nil {
 		t.Fatal(err)
 	}
 	select {

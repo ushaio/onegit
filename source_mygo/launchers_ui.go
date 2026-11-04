@@ -36,18 +36,25 @@ func (s *settings) launcher(kind string) *launchers.Installed {
 
 // launcherButtons follow the Git actions with raised icon buttons opening the
 // selected worktree in the chosen file manager, terminal and development
-// tool, then the repository's GitHub page.
+// tool, then the repository's GitHub page. The terminal button is a menu that
+// offers the chosen external terminal and Onegit's built-in one.
 func (s *settings) launcherButtons(c *ui.Context) {
-	if dir := s.overview.SelectedPath; dir != "" {
-		for _, kind := range launchers.Kinds {
-			if l := s.launcher(kind); l != nil {
-				ui.Box(c).Key("launcher-" + kind).Children(func() {
-					label := fmt.Sprintf(s.text("在 %s 中打开"), l.Name)
-					if components.IconButton(c, launchers.Glyph(kind)(), label, components.IconButtonToolbar).Clicked() {
-						s.openWith(l, dir)
-					}
-				})
-			}
+	dir := s.overview.SelectedPath
+	for _, kind := range launchers.Kinds {
+		if kind == launchers.Terminal {
+			s.terminalButton(c, dir)
+			continue
+		}
+		if dir == "" {
+			continue
+		}
+		if l := s.launcher(kind); l != nil {
+			ui.Box(c).Key("launcher-" + kind).Children(func() {
+				label := fmt.Sprintf(s.text("在 %s 中打开"), l.Name)
+				if components.IconButton(c, launchers.Glyph(kind)(), label, components.IconButtonToolbar).Clicked() {
+					s.openWith(l, dir)
+				}
+			})
 		}
 	}
 	if page := s.gitView().GitHubPage(); page != "" {
@@ -55,6 +62,32 @@ func (s *settings) launcherButtons(c *ui.Context) {
 			c.OpenURL(page)
 		}
 	}
+}
+
+// terminalButton is the title bar's terminal menu: the chosen external
+// terminal, when one is installed, and the built-in terminal of the
+// repository's main worktree. It stays visible even without an external
+// terminal, so the built-in one is always reachable.
+func (s *settings) terminalButton(c *ui.Context, dir string) {
+	terminalDir := s.terminalDir()
+	if terminalDir == "" {
+		return
+	}
+	ui.Box(c).Key("launcher-" + launchers.Terminal).Children(func() {
+		button := components.IconButton(c, launchers.Glyph(launchers.Terminal)(), s.text("终端菜单"), components.IconButtonToolbar)
+		button.Menu(func(m *ui.Menu) {
+			if dir != "" {
+				if l := s.launcher(launchers.Terminal); l != nil {
+					if m.Item(fmt.Sprintf(s.text("在 %s 中打开"), l.Name)).Chosen() {
+						s.openWith(l, dir)
+					}
+				}
+			}
+			if m.Item(s.text("在内置终端中打开")).Chosen() {
+				s.openTerminal(terminalDir)
+			}
+		})
+	})
 }
 
 // openWith opens dir with the launcher off the main thread, showing a toast

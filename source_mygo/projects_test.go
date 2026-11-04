@@ -207,7 +207,7 @@ func TestProjectContextMenu(t *testing.T) {
 		t.Fatal(err)
 	}
 	menu := tt.Menu()
-	if len(menu) != 8 || menu[0] != "Open Folder" || menu[1] != "-" || menu[2] != "Pin Project" || menu[3] != "Move to Group" || menu[4] != "-" || menu[5] != "Choose Icon…" || menu[6] != "-" || menu[7] != "Remove Project" {
+	if len(menu) != 9 || menu[0] != "Open Folder" || menu[1] != "-" || menu[2] != "Open Terminal" || menu[3] != "Pin Project" || menu[4] != "Move to Group" || menu[5] != "-" || menu[6] != "Choose Icon…" || menu[7] != "-" || menu[8] != "Remove Project" {
 		t.Fatalf("project menu: %q", menu)
 	}
 	if err := tt.ChooseMenuItem("Remove Project"); err != nil {

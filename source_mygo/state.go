@@ -27,6 +27,9 @@ type sidebarState struct {
 	ReposOpen         *bool                      `yaml:"reposOpen,omitempty"`
 	OtherOpen         *bool                      `yaml:"otherOpen,omitempty"`
 	Groups            map[string][]*projectGroup `yaml:"groups,omitempty"`
+	// TerminalPresets are the launch shortcuts of each repository's terminals,
+	// keyed by terminalKey of the repository path.
+	TerminalPresets map[string][]*terminalPreset `yaml:"terminalPresets,omitempty"`
 }
 
 const mainWindowStateKey = "main"
